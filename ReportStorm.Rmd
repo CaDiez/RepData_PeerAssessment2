@@ -1,0 +1,131 @@
+clacen---
+title: "ReportStorm"
+author: "Carlos Alberto Guevara Díez"
+date: "Monday, May 04, 2015"
+output: html_document
+---
+
+Reproducible Research: Peer Assessment 2
+==========================================
+Created by Carlos Alberto Guevara Díez on May 04, 2015.
+
+## Impact of Severe Weather Events on Public Health and Economy in the United States
+
+### Synopsis
+The basic goal is to explore the NOAA Storm Database and answer some basic questions about severe weather events. 
+1.Across the United States, which types of events (as indicated in the EVTYPE variable) are most harmful with respect to population health?
+2.Across the United States, which types of events have the greatest economic consequences?
+After the analysis we can say that the most damaging event for population are tornadoes and the economic consequences is divided in droght for crops and again tornadoes for properties, with this we can say that in general me most dangerous event for the human beings are tornadoes and you must be prepared for them.
+
+### Data Processing
+Load libraries and apply general settings
+```{r}
+##packsUsed<-c("R.utils", "data.table")
+##sapply(packsUsed, require, character.only=TRUE, quietly=TRUE)
+library("data.table")
+##library ("R.utils")
+cache = TRUE
+```
+Now we need to load the data that we are going to use in the analysis, when loaded we are going to check in a brief way the data structure in order to get familiar with the information. If you like to see more details abot the data structure please click [here](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf).
+```{r}
+## Check and load data
+if (!"StormData.csv.bz2" %in% dir("./Data Science Specialization/05 Reproducible Research/RepData_PeerAssessment2")) {
+        download.file("http://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2", destfile = "stormData.csv.bz2")
+}
+if(!file.exists("StormData.csv"))
+        bunzip2("stormData.csv.bz2", overwrite=T, remove=F)        
+stormData <- read.csv("stormData.csv", sep = ",")
+
+## Review data structure
+dim(stormData)
+head(stormData, n=2)
+```
+Now it´s time to preprocess data, make it tidy for further analysis.
+```{r}
+##Preprocces fieldnames and structure for further analysis
+old <- names(stormData)
+new <- tolower(old)
+setnames(stormData, old, new)
+```
+For the purpose that we want in this study we are going to use the columns propdmg, cropdmg, fatalities ans injuires, we are going to check missing values
+```{r}
+summary(stormData$propdmg)
+summary(stormData$cropdmg)
+summary(stormData$fatalities)
+summary(stormData$injuries)
+```
+Great news, there are no missing values in our data.
+In the exploratory analysis of the dataset I've noted that the columns propdmgexp and cropdmg exp contains the unit in which the metric (propdmg & cropdmg) are expresed.
+```{r}
+levels(stormData$cropdmgexp)
+levels(stormData$propdmgexp)
+```
+To make a proper economic analysis I've assigned factors to each **valid** unit which are("","0","H","K","M","B") and then multiply it by its metric creating a new dataset called stormDataExp that contains the economic data transformed.
+```{r}
+# Define multipliers for valid exponents
+powerExp <- data.frame(c("", "0", "H", "K", "M", "B"), c(1, 1, 10^2, 10^3,10^6, 10^9))
+colnames(powerExp) <- c("validexp", "PowerBy")
+# Subset data retaining only records with valid exponent
+stormDataExp <- subset(stormData, (cropdmgexp %in% powerExp$validexp) & (propdmgexp %in% powerExp$validexp))
+# Get the final economics in crops & props by multiplying factor by value
+colnames(powerExp) <- c("validexp", "propdmgPower")
+stormDataExp <- merge(stormData, powerExp, by.x = "propdmgexp", by.y = "validexp")
+stormDataExp$propdmg <- (stormDataExp$propdmg * stormDataExp$propdmgPower)
+colnames(powerExp) <- c("validexp", "cropdmgPower")
+stormDataExp <- merge(stormDataExp, powerExp, by.x = "cropdmgexp", by.y = "validexp")
+stormDataExp$cropdmg <- (stormDataExp$cropdmg * stormDataExp$cropdmgPower)
+```
+Finally we create a function to group and summarize any column of the datha set, we will use it further to analize the results of our objective columns and then graph them.
+```{r}
+##Create a function to summarize any column of the dataset
+selectColumnMetric<-function(field)
+{
+        ##summarize the field & create a data frame with titles
+        tableColumn <- tapply(stormDataExp[,field],stormDataExp$evtype,sum)
+        tableColumnSumOrd <- data.frame(eventtype=names(tableColumn), 
+                             metric=as.numeric(tableColumn))
+        #order by column in descending fashion
+        tableColumnSumOrd <- tableColumnSumOrd[order(tableColumnSumOrd$metric,decreasing=TRUE),]
+        # Take only top 20 & return
+        tableColumnSumOrd <- tableColumnSumOrd[1:20,]   
+        return(tableColumnSumOrd)
+}
+```
+Now that data is preprocessed and ready let´s begin with the results.
+
+### Results
+Which types of events are most harmful with respect to population health?, to anwser that let´s create fatalities and injuries objects that contains the top 20 events of each category using the StormDataExp Preprocessed data set and the functions created in the past section.
+```{r}
+injuries<-selectColumnMetric("injuries")
+fatalities<-selectColumnMetric("fatalities")
+```
+Now we are going to plot both objects to get the results we are looking for.
+```{r}
+par(las=3, cex=0.3, mfrow=c(1,2), mar=c(25,4,2,2))
+barplot(injuries$metric, names.arg=injuries$eventtype, col=injuries$eventtype,       
+        ylab="Injuries",
+        main="Top 20 Injuries/Event Type")
+title(xlab = "Event Type", line=11)
+barplot(fatalities$metric, names.arg=fatalities$eventtype, col=fatalities$eventtype,       
+        ylab="Fatalities",
+        main="Top 20 Fatalities/Event Type")
+title(xlab = "Event Type", line=11)
+```
+
+According to this graphics we can say that **the most harmful with respect to the population health is Tornadoes** in both categories, fatalities and injuries.
+Now we are going to apply the same procedure to answer which types of events have the greatest economic consequences.
+```{r}
+cropdmg<-selectColumnMetric("cropdmg")
+propdmg<-selectColumnMetric("propdmg")
+par(las=3, cex=0.3, mfrow=c(1,2), mar=c(25,4,2,2))
+barplot(cropdmg$metric, names.arg=cropdmg$eventtype, col=cropdmg$eventtype,       
+        ylab="Damage in Crops",
+        main="Top 20 Crop Damage/Event Type")
+title(xlab = "Event Type", line=11)
+barplot(propdmg$metric, names.arg=propdmg$eventtype, col=propdmg$eventtype,       
+        ylab="Damage in properties",
+        main="Top 20 Properties Damage/Event Type")
+title(xlab = "Event Type", line=11)
+```
+
+The last pair of graphics is really dramatic and according to my judgement it´s clear that climate change in really afecting us, **the greatest economic consequence for crops is DROUGHT meanwhile the geater one for properties it´s flood**. With this we can say that in general me most dangerous event for the human beings are tornadoes and you must be prepared for it.
